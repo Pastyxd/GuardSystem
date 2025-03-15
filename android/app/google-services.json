@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "361238420936",
+    "project_id": "lapdiary2",
+    "storage_bucket": "lapdiary2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:361238420936:android:69c21f5b0727734b5c34fd",
+        "android_client_info": {
+          "package_name": "com.example.lap_diary_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhYvnXKG0KUUH5Ejzhjz2vd4pATLglDMQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
