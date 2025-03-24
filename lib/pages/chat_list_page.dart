@@ -7,7 +7,7 @@ import 'chat_item.dart';
 import 'group_chats_widget.dart';
 import 'UserProfileScreen.dart';
 import 'package:intl/intl.dart';
-import 'package:guardsys/utils/encryption_helper.dart';
+import 'package:guardsys/utils/encryption_service.dart';
 import '../main.dart';
 
 final logger = Logger();
@@ -70,7 +70,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       logger.e("Chyba: Data uživatele nenalezena.");
                     }
                   },
-                  backgroundColor: Colors.red,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                   child: const Icon(Icons.person, color: Colors.white),
                 ),
                 const SizedBox(height: 10),
@@ -82,7 +82,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       setState(() {});
                     }
                   },
-                  backgroundColor: Colors.red,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                   child: const Icon(Icons.exit_to_app, color: Colors.white),
                 ),
               ],
@@ -91,7 +91,7 @@ class _ChatListPageState extends State<ChatListPage> {
     );
   }
 
-  /// 🔹 Přihlašovací a registrační formulář
+  /// login a register form
   Widget _buildLoginForm() {
     return Center(
       child: SingleChildScrollView(
@@ -149,7 +149,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       ),
                     if (_isRegistering) const SizedBox(height: 10),
 
-                    // 🔹 Pole pro heslo s ikonou oka a validací
+                    // pole pro heslo s passRevealem
                     TextField(
                       controller: _passwordController,
                       decoration: InputDecoration(
@@ -191,7 +191,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     ElevatedButton(
                       onPressed: () async {
                         String email = _emailController.text.trim();
-                        String password = _passwordController.text.trim();
+                        String password = _passwordController.text.trim(); // L
                         String name = _nameController.text.trim();
                         String phone = _phoneController.text.trim();
 
@@ -232,14 +232,24 @@ class _ChatListPageState extends State<ChatListPage> {
 
   Widget _buildChatList() {
     return Container(
-      color: const Color(0xFFF03C39),
+      color: const Color(0xFFF5F6F8),
       child: Column(
         children: [
-          const SizedBox(
-            width: double.infinity,
-            child: GroupChatsWidget(),
+          Container(
+            color: Theme.of(context).colorScheme.tertiary,
+            child: Column(
+              children: [
+                const SizedBox(
+                  width: double.infinity,
+                  child: GroupChatsWidget(),
+                ),
+                Divider(
+                    height: 3,
+                    thickness: 3,
+                    color: Theme.of(context).colorScheme.primary),
+              ],
+            ),
           ),
-          const Divider(thickness: 3, color: Colors.black),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream:
@@ -249,7 +259,7 @@ class _ChatListPageState extends State<ChatListPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                // Filtrujeme seznam uživatelů, aby neobsahoval aktuálního uživatele
+                // Filtrovani aktualniho uzivatele pryc
                 final filteredDocs = snapshot.data!.docs
                     .where((doc) =>
                         doc.id != FirebaseAuth.instance.currentUser!.uid)
@@ -258,7 +268,7 @@ class _ChatListPageState extends State<ChatListPage> {
                 return ListView.separated(
                   itemCount: filteredDocs.length,
                   separatorBuilder: (context, index) => const Divider(
-                    color: Colors.black,
+                    color: Color(0xFFE0E0E0),
                     thickness: 1,
                   ),
                   itemBuilder: (context, index) {
@@ -268,7 +278,7 @@ class _ChatListPageState extends State<ChatListPage> {
                     String currentUserId =
                         FirebaseAuth.instance.currentUser!.uid;
 
-                    // Vytvoření chatId ze dvou uid
+                    // vytvoreni chatId ze 2 uid
                     List<String> ids = [currentUserId, chatPartnerId]..sort();
                     String chatId = ids.join("_");
 
@@ -303,11 +313,11 @@ class _ChatListPageState extends State<ChatListPage> {
                         var chatData =
                             chatSnapshot.data!.data() as Map<String, dynamic>;
 
-                        // 🔹 Dešifrování poslední zprávy
+                        // desifrovani posledni zpravy
                         String lastMessageText = "Žádné zprávy";
                         if (chatData["lastMessage"]?["text"] != null) {
                           try {
-                            lastMessageText = EncryptionHelper.decryptText(
+                            lastMessageText = EncryptionService.decryptText(
                                 chatData["lastMessage"]["text"]);
                           } catch (e) {
                             lastMessageText = "🔒 Nelze dešifrovat";
@@ -386,7 +396,7 @@ class _ChatListPageState extends State<ChatListPage> {
       );
 
       if (userCredential.user == null) {
-        // Pokud se nepodařilo vytvořit uživatele v Auth, smažeme data z Firestore
+        // pokud se nevytvoril v auth, smazou se data z firestore
         await userDocRef.delete();
         throw Exception('Nepodařilo se vytvořit uživatele');
       }
@@ -445,7 +455,7 @@ class _ChatListPageState extends State<ChatListPage> {
       print("🔄 Pokus o přihlášení...");
       print("📧 Email: ${_emailController.text}");
 
-      // Přihlášení uživatele
+      // Prihlaseni
       final UserCredential userCredential =
           await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
@@ -455,7 +465,7 @@ class _ChatListPageState extends State<ChatListPage> {
       print("✅ Přihlášení úspěšné");
       print("👤 UID: ${userCredential.user?.uid}");
 
-      // Aktualizace lastActive v Firestore
+      // last activity
       if (userCredential.user != null) {
         await FirebaseFirestore.instance
             .collection("users")
@@ -471,11 +481,9 @@ class _ChatListPageState extends State<ChatListPage> {
           _isLoggedIn = true;
         });
 
-        // Krátké zpoždění před navigací
         await Future.delayed(const Duration(milliseconds: 100));
 
         if (mounted) {
-          // Odstraníme všechny předchozí stránky a nahradíme je MainPage
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const MainPage()),
             (route) => false,
@@ -527,9 +535,13 @@ class _ChatListPageState extends State<ChatListPage> {
 
   ButtonStyle _buttonStyle() {
     return ElevatedButton.styleFrom(
-      backgroundColor: Colors.red,
+      backgroundColor: const Color(0xFF1565C0),
       foregroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      minimumSize: const Size(double.infinity, 50),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      elevation: 2,
     );
   }
 }

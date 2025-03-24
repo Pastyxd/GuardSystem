@@ -45,5 +45,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Potřebujeme přístup ke galerii pro výběr profilové fotky.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Potřebujeme přístup ke kameře pro pořízení profilové fotky.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Potřebujeme přístup k mikrofonu pro telefonní hovory.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

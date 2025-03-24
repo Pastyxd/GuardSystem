@@ -15,7 +15,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  bool _obscurePassword = true; // 👁 Stav pro skrytí/zobrazení hesla
+  bool _obscurePassword = true; // zobrazeni/skryti hesla
   String? _errorMessage;
   String? _passwordValidationMessage;
 
@@ -133,7 +133,7 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: () => _loginUser(
                       _emailController.text, _passwordController.text),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(

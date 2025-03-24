@@ -4,68 +4,163 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 // import 'package:file_selector/file_selector.dart';
 // import 'package:excel/excel.dart';
 import 'package:guardsys/pages/chat_list_page.dart';
-// import 'package:guardsys/pages/login_page.dart';
+import 'package:guardsys/pages/break_scheduler_page.dart';
 // import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
+import 'package:guardsys/widgets/cleaning_schedule_widget.dart';
+import 'services/notifications.dart';
+import 'package:guardsys/pages/UserProfileScreen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 final logger = Logger();
 
-Future<void> initializeFirebase() async {
+Future<void> initializeApp() async {
   try {
-    print('🔄 Inicializace Firebase...');
+    // nacitani .env souboru
+    print('🔄 Načítám .env soubor...');
+    try {
+      await dotenv.load();
+      print('✅ .env soubor načten (výchozí cesta)');
+    } catch (e) {
+      print(
+          '⚠️ Nepodařilo se načíst .env z výchozí cesty, zkouším alternativní cesty...');
 
-    // Inicializace Firebase Core
+      try {
+        await dotenv.load(fileName: ".env");
+        print('✅ .env soubor načten (relativní cesta)');
+      } catch (e) {
+        print(
+            '⚠️ Nepodařilo se načíst .env z relativní cesty, zkouším absolutní...');
+
+        final String path = Directory.current.path;
+        await dotenv.load(fileName: "$path/.env");
+        print('✅ .env soubor načten (absolutní cesta: $path/.env)');
+      }
+    }
+
+    // kontrola encryption klice
+    final encryptionKey = dotenv.env['ENCRYPTION_KEY'];
+    final encryptionIv = dotenv.env['ENCRYPTION_IV'];
+
+    if (encryptionKey == null || encryptionKey.isEmpty) {
+      throw Exception('ENCRYPTION_KEY není nastaven v .env souboru');
+    }
+    if (encryptionIv == null || encryptionIv.isEmpty) {
+      throw Exception('ENCRYPTION_IV není nastaven v .env souboru');
+    }
+
+    print('✅ Šifrovací klíče jsou nastaveny');
+    print('🔑 Délka ENCRYPTION_KEY: ${encryptionKey.length}');
+    print('🔑 Délka ENCRYPTION_IV: ${encryptionIv.length}');
+
+    // inicializace firebase
+    print('🔄 Inicializace Firebase...');
     await Firebase.initializeApp();
     print('✅ Firebase Core inicializován');
 
-    // Inicializace AppCheck
+    // inicializace firebase app check
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.debug,
     );
     print('✅ Firebase AppCheck inicializován');
 
-    // Inicializace Auth a čekání na první stav
     await Future.delayed(const Duration(milliseconds: 500));
     await FirebaseAuth.instance.authStateChanges().first;
     print('✅ Firebase Auth inicializován');
 
-    print('✅ Všechny Firebase služby úspěšně inicializovány');
+    print('✅ Všechny služby úspěšně inicializovány');
   } catch (e) {
-    print('⛔ Chyba při inicializaci Firebase: $e');
+    print('⛔ Chyba při inicializaci: $e');
+    print('⛔ Stack trace: ${StackTrace.current}');
+    rethrow; //  prace s chybou
   }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeFirebase();
+  await Firebase.initializeApp();
+
+  // inicializace notifikaci
+  final notifications = Notifications();
+  await notifications.initialize();
+
+  await initializeApp();
   runApp(const MyApp());
 }
+
+// Definice barev aplikace
+const primaryColor = Color(0xFF1565C0); // prime barva
+const secondaryColor = Color(0xFF1565C0); // 2nd barva
+const backgroundColor = Color(0xFFF5F6F8); // bg barva
+const surfaceColor = Colors.white;
+const accentColor = Color(0xFF1565C0);
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFF03C39);
-
     return MaterialApp(
-      title: 'Guard System',
+      title: 'GuardSys',
+      navigatorKey: navigatorKey,
       theme: ThemeData(
-        scaffoldBackgroundColor:
-            const Color(0xFFF0F0F0), // tmavší off-white barva
+        useMaterial3: true,
+        scaffoldBackgroundColor: backgroundColor,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: backgroundColor,
+          seedColor: primaryColor,
+          primary: primaryColor,
+          secondary: secondaryColor,
+          background: backgroundColor,
+          surface: surfaceColor,
+          tertiary: accentColor,
           brightness: Brightness.light,
         ),
-        useMaterial3: true,
+        cardTheme: CardTheme(
+          color: surfaceColor,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryColor,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: surfaceColor,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: secondaryColor.withOpacity(0.3)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: secondaryColor.withOpacity(0.3)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: primaryColor),
+          ),
+        ),
       ),
       home: const MainPage(),
+      routes: {
+        '/breaks': (context) => const BreakSchedulerPage(),
+      },
     );
   }
 }
@@ -78,7 +173,8 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  int _selectedIndex = 2; // Výchozí index je 2 (ChatPage)
+  int _selectedIndex = 2; // default index - chatpage
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Stranky aplikace
   final List<Widget> _pages = const [
@@ -87,11 +183,40 @@ class _MainPageState extends State<MainPage> {
     ChatPage(),
   ];
 
-  // Zmena vybrane stranky
+  //prechod mezi strankama
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+  }
+
+  Future<void> _openUserProfile() async {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const ChatListPage()),
+      );
+      return;
+    }
+
+    final userDoc = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user.uid)
+        .get();
+
+    final userData = userDoc.data();
+    if (userData != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => UserProfileScreen(
+            name: userData["name"] ?? "Neznámý uživatel",
+            email: userData["email"] ?? user.email!,
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -106,29 +231,35 @@ class _MainPageState extends State<MainPage> {
             fontSize: 24,
           ),
         ),
-        backgroundColor: const Color(0xFFF03C39),
+        backgroundColor: primaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: _openUserProfile,
+          ),
+        ],
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.timer, size: 30),
-            label: 'Pauzovacka',
+            label: 'Pauzovačka',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.home, size: 30),
-            label: 'Domov',
+            label: 'Domů',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat, size: 30),
-            label: 'Chat',
+            label: 'Zprávy',
           ),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white70,
-        backgroundColor: const Color(0xFFF03C39),
+        backgroundColor: primaryColor,
         onTap: _onItemTapped,
       ),
     );
@@ -140,12 +271,7 @@ class TimerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Pauzovacka',
-        style: TextStyle(fontSize: 24),
-      ),
-    );
+    return const BreakSchedulerPage();
   }
 }
 
@@ -160,11 +286,49 @@ class _HomePageState extends State<HomePage> {
   String? pdfPath;
   bool _isLoading = true;
   String _errorMessage = '';
+  final TransformationController _transformationController =
+      TransformationController();
+  double _currentScale = 1.0; // snizeni def priblizeni
+  PdfControllerPinch? _pdfController;
 
   @override
   void initState() {
     super.initState();
+    logger.d('Inicializace HomePage');
     loadPdfFromFirebase();
+    _transformationController.value = Matrix4.identity()..scale(_currentScale);
+  }
+
+  @override
+  void dispose() {
+    logger.d('Dispose HomePage');
+    _transformationController.dispose();
+    _pdfController?.dispose(); // cisteni pdf controlleru
+    super.dispose();
+  }
+
+  void _zoomIn() {
+    setState(() {
+      if (_currentScale < 3.5) {
+        _currentScale = (_currentScale + 0.5).clamp(1.0, 3.5);
+        logger.d('Přiblížení na: $_currentScale');
+        _updateTransformation();
+      }
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      if (_currentScale > 1.0) {
+        _currentScale = (_currentScale - 0.5).clamp(1.0, 3.5);
+        logger.d('Oddálení na: $_currentScale');
+        _updateTransformation();
+      }
+    });
+  }
+
+  void _updateTransformation() {
+    _transformationController.value = Matrix4.identity()..scale(_currentScale);
   }
 
   Future<void> loadPdfFromFirebase() async {
@@ -172,7 +336,7 @@ class _HomePageState extends State<HomePage> {
       final ref = FirebaseStorage.instance.ref().child('rozvrh.pdf');
       final url = await ref.getDownloadURL();
 
-      // Uložení PDF do lokální paměti
+      // ulozeni pdf do local pameti
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/rozvrh.pdf');
 
@@ -187,7 +351,12 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Chyba při načítání PDF: $e';
+          if (e.toString().contains('Permission denied')) {
+            _errorMessage =
+                'Tento dokument může vidět pouze přihlášený uživatel.';
+          } else {
+            _errorMessage = 'Chyba při načítání PDF: $e';
+          }
           _isLoading = false;
         });
       }
@@ -196,287 +365,221 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          flex: 7,
-          child: Container(
-            color: const Color(0xFFF0F0F0), // tmavší off-white barva pozadí
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: Colors.black,
-                  width: 3,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color.fromARGB(25, 0, 0, 0),
-                    blurRadius: 10,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        color: Colors.black,
-                        size: 28,
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        'Rozvrh',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: SingleChildScrollView(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            child: Column(
+              children: [
+                // PDF viewer sekce
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _errorMessage.isNotEmpty
-                            ? Center(
-                                child: Text(
-                                  _errorMessage,
-                                  style: const TextStyle(color: Colors.red),
-                                ),
-                              )
-                            : pdfPath != null
-                                ? LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final pdfController = PdfControllerPinch(
-                                        document:
-                                            PdfDocument.openFile(pdfPath!),
-                                      );
-
-                                      ValueNotifier<int> currentPage =
-                                          ValueNotifier<int>(1);
-
-                                      if ((pdfController.pagesCount ?? 0) > 0) {
-                                        pdfController.pageListenable
-                                            .addListener(() {
-                                          final page = pdfController.page ?? 1;
-                                          currentPage.value =
-                                              (page > 0) ? page : 1;
-                                        });
-                                      }
-
-                                      return Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius:
-                                              BorderRadius.circular(15),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color:
-                                                  Color.fromARGB(25, 0, 0, 0),
-                                              blurRadius: 10,
-                                              offset: Offset(0, 5),
-                                            ),
-                                          ],
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(15),
-                                          child: InteractiveViewer(
-                                            boundaryMargin:
-                                                const EdgeInsets.all(20),
-                                            minScale: 1.0,
-                                            maxScale: 5.0,
-                                            panEnabled: true,
-                                            child: SingleChildScrollView(
-                                              scrollDirection: Axis.horizontal,
-                                              child: SingleChildScrollView(
-                                                scrollDirection: Axis.vertical,
-                                                child: SizedBox(
-                                                  width: MediaQuery.of(context)
-                                                          .size
-                                                          .width *
-                                                      2.5,
-                                                  height: MediaQuery.of(context)
-                                                          .size
-                                                          .height *
-                                                      1.5,
-                                                  child: PdfViewPinch(
-                                                      controller:
-                                                          pdfController),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  )
-                                : const Center(
-                                    child: Text('PDF nenalezeno.'),
-                                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(15),
+                            topRight: Radius.circular(15),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.calendar_month,
+                                color: Colors.white, size: 28),
+                            SizedBox(width: 12),
+                            Text(
+                              'Měsíční rozvrh',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 500,
+                        child: _buildPdfView(),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 24),
+                // Sekce s uklidama
+                const SizedBox(
+                  height: 520,
+                  child: CleaningScheduleWidget(),
+                ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
 
-        // Spodni widget s tabulkou
-        Expanded(
-          flex: 5,
-          child: Container(
-            color: const Color(0xFFF0F0F0), // tmavší off-white barva pozadí
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: Colors.black,
-                  width: 3,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color.fromARGB(25, 0, 0, 0),
-                    blurRadius: 10,
-                    offset: Offset(0, 5),
-                  ),
-                ],
+  Widget _buildPdfView() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    } else if (_errorMessage.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.lock_outline,
+              size: 48,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Tento dokument může vidět pouze přihlášený uživatel',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
               ),
-              child: Column(
-                children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.cleaning_services, color: Colors.black),
-                      SizedBox(width: 8),
-                      Text(
-                        'Úklidy',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ChatListPage()),
+                );
+              },
+              icon: const Icon(Icons.login),
+              label: const Text('Přihlásit se'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (pdfPath != null) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          _pdfController ??= PdfControllerPinch(
+            document: PdfDocument.openFile(pdfPath!),
+          );
+
+          return Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(15),
+                    bottomRight: Radius.circular(15),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color.fromARGB(25, 0, 0, 0),
+                      blurRadius: 10,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(15),
+                    bottomRight: Radius.circular(15),
+                  ),
+                  child: InteractiveViewer(
+                    transformationController: _transformationController,
+                    boundaryMargin: const EdgeInsets.all(20),
+                    minScale: 1.0,
+                    maxScale: 3.5,
+                    panEnabled: true,
+                    onInteractionEnd: (details) {
+                      final scale =
+                          _transformationController.value.getMaxScaleOnAxis();
+                      if (scale != _currentScale) {
+                        setState(() => _currentScale = scale.clamp(1.0, 3.5));
+                        logger.d('Nové měřítko po interakci: $_currentScale');
+                      }
+                    },
                     child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
+                      scrollDirection: Axis.horizontal,
                       child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columns: const [
-                            DataColumn(
-                                label: Text('Den',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold))),
-                            DataColumn(
-                                label: Text('Dětský bazén',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold))),
-                            DataColumn(
-                                label: Text('50m',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold))),
-                            DataColumn(
-                                label: Text('25m',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold))),
-                            DataColumn(
-                                label: Text('Venek',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold))),
-                          ],
-                          rows: const [
-                            DataRow(cells: [
-                              DataCell(Text('Pondělí',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Oplach + Dezinfekce')),
-                              DataCell(Text('Oplach + Dezinfekce')),
-                              DataCell(Text('Oplach + Dezinfekce + VEDA')),
-                              DataCell(Text('Oplach + Dezinfekce')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Úterý',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('VEDA')),
-                              DataCell(Text('Oplach + VEDA')),
-                              DataCell(Text('Oplach + VEDA + R:Balkon')),
-                              DataCell(Text('Oplach + VEDA')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Středa',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Chromy + Oplach')),
-                              DataCell(Text('Chromy + Oplach')),
-                              DataCell(
-                                  Text('Oplach + VEDA + Chromy + R:Balkon')),
-                              DataCell(Text('Dezinfekce + VEDA')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Čtvrtek',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Oplach + Dezinfekce')),
-                              DataCell(Text('Oplach + Dezinfekce + VEDA')),
-                              DataCell(Text('Oplach + Dezinfekce + VEDA')),
-                              DataCell(Text('Oplach')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Pátek',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Oplach')),
-                              DataCell(Text('Oplach')),
-                              DataCell(Text('Oplach')),
-                              DataCell(Text('Dezinfekce + VEDA')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Sobota',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Oplach + Dezinfekce')),
-                              DataCell(Text(
-                                  'Oplach + Dezinfekce + VEDA + R:Plavčíkárna')),
-                              DataCell(Text(
-                                  'Oplach + Dezinfekce + VEDA + R:Balkon')),
-                              DataCell(Text('Oplach + VEDA')),
-                            ]),
-                            DataRow(cells: [
-                              DataCell(Text('Neděle',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text('Oplach + VEDA')),
-                              DataCell(Text('Oplach')),
-                              DataCell(Text('VEDA')),
-                              DataCell(Text('Oplach')),
-                            ]),
-                          ],
+                        scrollDirection: Axis.vertical,
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 2.5,
+                          height: MediaQuery.of(context).size.height * 1.5,
+                          child: PdfViewPinch(controller: _pdfController!),
                         ),
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
-      ],
-    );
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.zoom_in, color: Colors.white),
+                        onPressed: _zoomIn,
+                        tooltip: 'Přiblížit',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.zoom_out, color: Colors.white),
+                        onPressed: _zoomOut,
+                        tooltip: 'Oddálit',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      return const Center(child: Text('PDF nenalezeno.'));
+    }
   }
 }
 

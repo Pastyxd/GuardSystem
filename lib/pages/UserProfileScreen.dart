@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String name;
@@ -26,6 +28,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String profilePicUrl = "";
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _isPickingImage = false;
+  final TextEditingController _oldPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  bool _showOldPassword = false;
+  bool _showNewPassword = false;
+  bool _notificationsEnabled = true;
+  File? _imageFile;
 
   @override
   void initState() {
@@ -36,7 +45,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// nacteni uzivatelskych dat
   void _fetchUserData() async {
     try {
-      // Najít uživatele podle emailu
+      // najit uzivatele podle mailu
       final QuerySnapshot userQuery = await FirebaseFirestore.instance
           .collection("users")
           .where("email", isEqualTo: widget.email)
@@ -48,10 +57,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         setState(() {
           phoneNumber = userData["phone"] ?? "Není k dispozici";
           profilePicUrl = userData["profilePic"] ?? "";
+          _notificationsEnabled = userData["notificationsEnabled"] ?? true;
 
           print("🔄 Načtena data uživatele: ${widget.email}");
           print("📱 Telefon: $phoneNumber");
           print("🖼️ Profilová fotka: $profilePicUrl");
+          print(
+              "🔔 Notifikace: ${_notificationsEnabled ? "Zapnuty" : "Vypnuty"}");
 
           if (profilePicUrl.isEmpty) {
             print("⚠️ Uživatel nemá nastavenou profilovou fotku.");
@@ -91,13 +103,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         Uint8List bytes = await pickedFile.readAsBytes();
         uploadTask = storageRef.putData(
           bytes,
-          SettableMetadata(contentType: 'image/jpeg'), // Nastavení metadata
+          SettableMetadata(contentType: 'image/jpeg'),
         );
       } else {
         File file = File(pickedFile.path);
         uploadTask = storageRef.putFile(
           file,
-          SettableMetadata(contentType: 'image/jpeg'), // Nastavení metadata
+          SettableMetadata(contentType: 'image/jpeg'),
         );
       }
 
@@ -135,7 +147,36 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  /// 📌 **Zkopíruje telefonní číslo do schránky**
+  /// 📞 **Zavolá na telefonní číslo**
+  Future<void> _callPhoneNumber() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final isEmulator = androidInfo.isPhysicalDevice == false;
+
+    if (isEmulator) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Volání není dostupné na emulátoru. Použijte reálné zařízení."),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nelze zavolat na toto číslo")),
+      );
+    }
+  }
+
   void _copyPhoneNumber() {
     Clipboard.setData(ClipboardData(text: phoneNumber));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -143,85 +184,549 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.red[300],
-      appBar: AppBar(
-        title: const Text("Profil uživatele"),
-        backgroundColor: Colors.red[400],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: () async {
-                print("📸 Uživatel klikl na profilovku");
-                print("📧 Email profilu: ${widget.email}");
-                print("👤 Aktuální uživatel: ${_auth.currentUser?.email}");
-                print(
-                    "🔍 Porovnání: ${widget.email == _auth.currentUser?.email}");
+  Future<void> _showChangePasswordDialog() async {
+    _oldPasswordController.clear();
+    _newPasswordController.clear();
+    setState(() {
+      _showOldPassword = false;
+      _showNewPassword = false;
+    });
 
-                if (widget.email == _auth.currentUser?.email) {
-                  print("✅ Je to vlastní profil, spouštím nahrávání fotky");
-                  await _pickAndUploadImage();
-                } else {
-                  print("❌ Není to vlastní profil, nahrávání fotky zakázáno");
-                }
-              },
-              child: CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.grey[700],
-                backgroundImage: profilePicUrl.isNotEmpty
-                    ? NetworkImage(profilePicUrl)
-                    : null,
-                child: (profilePicUrl.isEmpty)
-                    ? const Icon(Icons.person, size: 60, color: Colors.white)
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              widget.name,
-              style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              widget.email,
-              style: const TextStyle(fontSize: 16, color: Colors.white70),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
+    print("📱 Otevírám dialog pro změnu hesla");
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Row(
+              child: Stack(
                 children: [
-                  const Icon(Icons.phone, color: Colors.black54, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      phoneNumber,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 18),
+                  SingleChildScrollView(
+                    child: IntrinsicHeight(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: 20,
+                          left: 20,
+                          right: 20,
+                          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Změna hesla',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _oldPasswordController,
+                              obscureText: !_showOldPassword,
+                              autofocus: true,
+                              decoration: InputDecoration(
+                                labelText: 'Staré heslo',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _showOldPassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _showOldPassword = !_showOldPassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _newPasswordController,
+                              obscureText: !_showNewPassword,
+                              decoration: InputDecoration(
+                                labelText: 'Nové heslo',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _showNewPassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _showNewPassword = !_showNewPassword;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Zrušit'),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () => _changePassword(),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        Theme.of(context).colorScheme.primary,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  child: const Text('Změnit heslo'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon:
-                        const Icon(Icons.copy, color: Colors.black54, size: 20),
-                    onPressed: _copyPhoneNumber,
                   ),
                 ],
               ),
+            );
+          },
+        );
+      },
+    );
+    print("🔍 Dialog pro změnu hesla otevřen");
+  }
+
+  Future<void> _changePassword() async {
+    try {
+      // overeni se starym heslem
+      final user = _auth.currentUser;
+      final credential = EmailAuthProvider.credential(
+        email: user?.email ?? '',
+        password: _oldPasswordController.text,
+      );
+
+      await user?.reauthenticateWithCredential(credential);
+
+      // zmena hesla
+      await user?.updatePassword(_newPasswordController.text);
+
+      if (mounted) {
+        Navigator.pop(context); // Zavře dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Heslo bylo úspěšně změněno')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chyba: Nesprávné staré heslo')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showChangePhoneDialog() async {
+    _phoneController.text = phoneNumber;
+
+    print("📱 Otevírám dialog pro změnu telefonního čísla");
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Změna telefonního čísla'),
+          content: TextField(
+            controller: _phoneController,
+            autofocus: true,
+            maxLength: 17,
+            decoration: const InputDecoration(
+              labelText: 'Nové telefonní číslo',
+              border: OutlineInputBorder(),
+              counterText: '',
+            ),
+            keyboardType: TextInputType.phone,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušit'),
+            ),
+            ElevatedButton(
+              onPressed: () => _changePhoneNumber(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Změnit číslo'),
             ),
           ],
+        );
+      },
+    );
+    print("🔍 Dialog pro změnu telefonního čísla otevřen");
+  }
+
+  Future<void> _changePhoneNumber() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'phone': _phoneController.text});
+
+        setState(() {
+          phoneNumber = _phoneController.text;
+        });
+
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Telefonní číslo bylo úspěšně změněno')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chyba při změně telefonního čísla')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleNotifications() async {
+    try {
+      final userId = _auth.currentUser!.uid;
+      final newState = !_notificationsEnabled;
+
+      await FirebaseFirestore.instance.collection("users").doc(userId).update({
+        "notificationsEnabled": newState,
+      });
+
+      if (mounted) {
+        setState(() {
+          _notificationsEnabled = newState;
+        });
+      }
+
+      print(
+          "🔔 Notifikace ${newState ? "zapnuty" : "vypnuty"} pro uživatele $userId");
+    } catch (e) {
+      print("❌ Chyba při přepínání notifikací: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Chyba při přepínání notifikací")),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = bottomPadding > 0;
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Padding(
+          padding: EdgeInsets.only(left: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Icon(Icons.person, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                "Profil uživatele",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        print("📸 Uživatel klikl na profilovku");
+                        print("📧 Email profilu: ${widget.email}");
+                        print(
+                            "👤 Aktuální uživatel: ${_auth.currentUser?.email}");
+
+                        final bool isOwnProfile = widget.email.toLowerCase() ==
+                            _auth.currentUser?.email?.toLowerCase();
+                        print("🔍 Porovnání: $isOwnProfile");
+
+                        if (isOwnProfile) {
+                          print(
+                              "✅ Je to vlastní profil, spouštím nahrávání fotky");
+                          await _pickAndUploadImage();
+                        } else {
+                          print(
+                              "❌ Není to vlastní profil, nahrávání fotky zakázáno");
+                        }
+                      },
+                      child: Stack(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2.5,
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 50,
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.tertiary,
+                              backgroundImage: _imageFile != null
+                                  ? FileImage(_imageFile!)
+                                  : (profilePicUrl.isNotEmpty
+                                      ? NetworkImage(profilePicUrl)
+                                          as ImageProvider
+                                      : null),
+                              child:
+                                  _imageFile == null && (profilePicUrl.isEmpty)
+                                      ? const Icon(Icons.person,
+                                          size: 60, color: Colors.white)
+                                      : null,
+                            ),
+                          ),
+                          if (widget.email.toLowerCase() ==
+                              _auth.currentUser?.email?.toLowerCase())
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.blue,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.name,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.email,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _callPhoneNumber,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.phone, color: Colors.black),
+                            const SizedBox(width: 12),
+                            Text(
+                              phoneNumber,
+                              style: const TextStyle(
+                                  color: Colors.black, fontSize: 16),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, color: Colors.black),
+                      onPressed: _copyPhoneNumber,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              const Divider(
+                color: Colors.white,
+                thickness: 1,
+                height: 32,
+              ),
+              if (!isKeyboardOpen) ...[
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.settings, color: Colors.white, size: 24),
+                    SizedBox(width: 4),
+                    Text(
+                      "Nastavení",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // prepinac notifikaci
+                Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_outlined,
+                        color: Colors.black),
+                    title: const Text("Notifikace",
+                        style: TextStyle(color: Colors.black)),
+                    subtitle: Text(
+                        _notificationsEnabled ? "Zapnuto" : "Vypnuto",
+                        style: const TextStyle(color: Colors.black)),
+                    trailing: SizedBox(
+                      width: 80,
+                      child: Switch(
+                        value: _notificationsEnabled,
+                        onChanged: (bool value) {
+                          _toggleNotifications();
+                        },
+                        activeColor: Colors.blue,
+                      ),
+                    ),
+                  ),
+                ),
+                // zmena telefonniho cisla
+                Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.phone, color: Colors.black),
+                    title: const Text("Změnit telefonní číslo",
+                        style: TextStyle(color: Colors.black)),
+                    subtitle: Text(phoneNumber,
+                        style: const TextStyle(color: Colors.black)),
+                    trailing: const Icon(Icons.arrow_forward_ios,
+                        size: 16, color: Colors.black),
+                    onTap: () {
+                      _showChangePhoneDialog();
+                    },
+                  ),
+                ),
+                // zmena hesla
+                Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading:
+                        const Icon(Icons.lock_outline, color: Colors.black),
+                    title: const Text("Změnit heslo",
+                        style: TextStyle(color: Colors.black)),
+                    subtitle: const Text("Klikněte pro změnu",
+                        style: TextStyle(color: Colors.black)),
+                    trailing: const Icon(Icons.arrow_forward_ios,
+                        size: 16, color: Colors.black),
+                    onTap: () {
+                      _showChangePasswordDialog();
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

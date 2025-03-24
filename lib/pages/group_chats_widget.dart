@@ -7,27 +7,25 @@ class GroupChatsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity, // 🔥 **Full width přes celou obrazovku**
-      padding: const EdgeInsets.symmetric(vertical: 8), // 📌 Zmenšená výška
-      color: Colors.red.shade300,
-      alignment: Alignment.center, // 📌 **Zarovnání obsahu**
+      width: double.infinity, // full widh bar
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      color: const Color(0xFF1565C0),
+      alignment: Alignment.center,
       child: Column(
-        mainAxisSize: MainAxisSize.min, // 📌 Zabrání nadměrnému roztahování
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
             "Skupiny",
             style: TextStyle(
-              fontSize: 20, // 🔹 Trochu menší text
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
             ),
           ),
-          const SizedBox(height: 6),
-
-          /// 📌 **Kompaktní rozmístění pomocí Wrap**
+          const SizedBox(height: 8),
           Wrap(
-            spacing: 4, // 📌 **Menší mezery mezi obrázky**
-            runSpacing: 4, // 📌 **Menší vertikální mezery**
+            spacing: 4,
+            runSpacing: 4,
             alignment: WrapAlignment.center,
             children: [
               _buildGroupButton(context, "Zelené", "group_zelene"),
@@ -62,20 +60,22 @@ class GroupChatsWidget extends StatelessWidget {
             );
           },
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(60), // 📌 Kulaté rohy
+            borderRadius: BorderRadius.circular(60),
             child: Image.asset(
               imagePath,
-              width: 100, // 📌 **Menší velikost obrázků pro úsporu místa**
+              width: 100,
               height: 100,
-              fit: BoxFit.cover, // 📌 Automatické přizpůsobení obrázku
+              fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => Container(
                 width: 100,
                 height: 100,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.group, color: Colors.red, size: 40),
+                child:
+                    const Icon(Icons.group, color: Color(0xFF0096C7), size: 40),
               ),
             ),
           ),
@@ -83,13 +83,14 @@ class GroupChatsWidget extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           groupName,
-          style: const TextStyle(color: Colors.black, fontSize: 14),
+          style: const TextStyle(
+              color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ],
     );
   }
 
-  /// 🔹 **Metoda pro výběr obrázku ke skupině**
+  /// obrazky skupin
   String _getGroupImage(String groupId) {
     switch (groupId) {
       case "group_zelene":
@@ -99,7 +100,7 @@ class GroupChatsWidget extends StatelessWidget {
       case "group_lazne":
         return "assets/images/lazne.jpg";
       default:
-        return ""; // 📌 Pokud není obrázek, použije výchozí ikonu
+        return "";
     }
   }
 }

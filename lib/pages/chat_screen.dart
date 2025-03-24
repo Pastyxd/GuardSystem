@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'UserProfileScreen.dart';
-import 'package:guardsys/utils/encryption_helper.dart';
+import 'package:guardsys/utils/encryption_service.dart';
+import 'package:guardsys/services/notifications.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatPartnerName;
@@ -51,13 +52,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  /// 🔹 **Inicializace chatu (nastaví `chatId` pouze pro 2 uživatele)**
+  /// inicializace chatu
   Future<void> _setupChat() async {
     User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
     if (widget.isGroupChat) {
-      chatId = widget.chatPartnerEmail; // Skupinový chat používá fixní ID
+      chatId = widget.chatPartnerEmail; // group chat s fixnim id
     } else {
       String currentUserId = currentUser.uid;
       String chatPartnerId = await _getChatPartnerId(widget.chatPartnerEmail);
@@ -68,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      // Speciální případ pro chat sám se sebou
+      // self chat
       if (currentUserId == chatPartnerId) {
         chatId = "self_$currentUserId";
       } else {
@@ -83,7 +84,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!chatSnapshot.exists) {
       await _firestore.collection("chats").doc(chatId).set({
         "participants": widget.isGroupChat
-            ? await _getAllUserIds() // Přidání všech uživatelů do skupiny
+            ? await _getAllUserIds() // pridani vsech uzivatelu do skupiny
             : [
                 currentUser.uid,
                 await _getChatPartnerId(widget.chatPartnerEmail)
@@ -105,7 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return querySnapshot.docs.map((doc) => doc.id).toList();
   }
 
-  /// 🔹 **Získání `UID` chat partnera podle emailu**
+  /// ziskani UID chat partnera z mailu
   Future<String> _getChatPartnerId(String email) async {
     try {
       QuerySnapshot querySnapshot = await _firestore
@@ -126,14 +127,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// 🔹 **Odeslání zprávy (správně uloží do `chats/{chatId}/messages`)**
+  /// 🔹 odeslani msg
   void _sendMessage() async {
     if (_messageController.text.isNotEmpty && chatId != null) {
       User? currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      String encryptedText =
-          EncryptionHelper.encryptText(_messageController.text);
+      String messageText = _messageController.text;
+      String encryptedText = EncryptionService.encryptText(messageText);
 
       DocumentSnapshot userDoc =
           await _firestore.collection("users").doc(currentUser.uid).get();
@@ -141,33 +142,61 @@ class _ChatScreenState extends State<ChatScreen> {
           ? userDoc["name"] ?? "Neznámý uživatel"
           : "Neznámý uživatel";
 
+      print("🔄 Odesílání zprávy - Odesílatel: $senderName");
+
       DocumentReference chatRef = _firestore.collection("chats").doc(chatId);
       CollectionReference messagesRef = chatRef.collection("messages");
 
-      // Získání ID příjemce
+      // ziskani ID prijemce
       String receiverId =
           chatId!.split("_").firstWhere((id) => id != currentUser.uid);
 
-      await messagesRef.add({
-        "text": encryptedText,
-        "timestamp": FieldValue.serverTimestamp(),
-        "sender": currentUser.uid,
-        "senderName": senderName,
-        "isRead": false,
-      });
+      print("👤 ID příjemce: $receiverId");
 
-      // Aktualizace počtu nepřečtených zpráv pro příjemce
-      await chatRef.update({
-        "lastMessage": {
+      try {
+        await messagesRef.add({
           "text": encryptedText,
           "timestamp": FieldValue.serverTimestamp(),
-        },
-        "unreadMessages.$receiverId": FieldValue.increment(1),
-      });
+          "sender": currentUser.uid,
+          "senderName": senderName,
+          "senderEmail": currentUser.email,
+          "isRead": false,
+        });
 
-      print("📨 Odeslána zpráva - chatId: $chatId, příjemce: $receiverId");
+        print("✅ Zpráva úspěšně uložena do Firestore");
 
-      _messageController.clear();
+        // aktualizace poctu unread zprav pro prijemce
+        await chatRef.update({
+          "lastMessage": {
+            "text": encryptedText,
+            "timestamp": FieldValue.serverTimestamp(),
+          },
+          "unreadMessages.$receiverId": FieldValue.increment(1),
+        });
+
+        print("✅ Počet nepřečtených zpráv aktualizován");
+
+        // doesilani notifikace
+        if (!widget.isGroupChat) {
+          print("📱 Pokus o odeslání notifikace příjemci: $receiverId");
+          try {
+            final notifications = Notifications();
+            await notifications.sendNotification(
+              recipientUid: receiverId,
+              senderName: senderName,
+              message: messageText,
+            );
+            print("✅ Notifikace úspěšně odeslána");
+          } catch (e) {
+            print("❌ Chyba při odesílání notifikace: $e");
+          }
+        }
+
+        _messageController.clear();
+        print("✨ Proces odesílání zprávy dokončen");
+      } catch (e) {
+        print("❌ Chyba při odesílání zprávy: $e");
+      }
     }
   }
 
@@ -178,19 +207,44 @@ class _ChatScreenState extends State<ChatScreen> {
     final messageDate = timestamp.toDate();
     final difference = now.difference(messageDate);
 
-    if (difference.inDays == 0) {
-      // Dnes - zobrazit pouze čas
+    // convert pro ceske dny
+    final Map<String, String> czechDays = {
+      'Mon': 'Po',
+      'Tue': 'Út',
+      'Wed': 'St',
+      'Thu': 'Čt',
+      'Fri': 'Pá',
+      'Sat': 'So',
+      'Sun': 'Ne',
+    };
+
+    // kontrola jestli je zprava dneska
+    if (now.year == messageDate.year &&
+        now.month == messageDate.month &&
+        now.day == messageDate.day) {
+      // Dnes - pouze čas
       return DateFormat('HH:mm').format(messageDate);
-    } else if (difference.inDays == 1) {
-      // Včera - zobrazit "Yesterday" + čas
-      return "Yesterday ${DateFormat('HH:mm').format(messageDate)}";
-    } else if (difference.inDays < 7) {
-      // Tento týden - zobrazit zkratku dne + čas
-      return "${DateFormat('E').format(messageDate)} ${DateFormat('HH:mm').format(messageDate)}";
-    } else {
-      // Starší než týden - zobrazit datum + čas
-      return DateFormat('dd.MM.yyyy HH:mm').format(messageDate);
     }
+
+    // kontrola jestli je zprava vcera
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (yesterday.year == messageDate.year &&
+        yesterday.month == messageDate.month &&
+        yesterday.day == messageDate.day) {
+      // Včera - "Yesterday" + čas
+      return "Včera ${DateFormat('HH:mm').format(messageDate)}";
+    }
+
+    // kontrola casu zpravy
+    if (difference.inDays < 7) {
+      // tento tyden
+      final englishDay = DateFormat('E').format(messageDate);
+      final czechDay = czechDays[englishDay] ?? englishDay;
+      return "$czechDay ${DateFormat('HH:mm').format(messageDate)}";
+    }
+
+    // starsi nez tyden
+    return DateFormat('d.M.yyyy HH:mm').format(messageDate);
   }
 
   @override
@@ -198,7 +252,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.red[300],
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: GestureDetector(
           onTap: () {
             Navigator.push(
@@ -275,7 +330,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      // Aktualizace počtu nepřečtených zpráv
+                      // aktualizace poctu unread zprav
                       if (chatId != null) {
                         _firestore
                             .collection("chats")
@@ -305,7 +360,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           String decryptedText = "";
                           try {
                             decryptedText =
-                                EncryptionHelper.decryptText(data["text"]);
+                                EncryptionService.decryptText(data["text"]);
                           } catch (e) {
                             decryptedText = "🔒 Nelze dešifrovat";
                           }
@@ -367,8 +422,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: isMe
-                                          ? Colors.red[300]
-                                          : Colors.red[100],
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .tertiary,
                                       borderRadius: BorderRadius.circular(15),
                                     ),
                                     child: Column(
@@ -433,8 +492,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        icon:
-                            const Icon(Icons.send, color: Colors.red, size: 36),
+                        icon: Icon(Icons.send,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 36),
                         onPressed: _sendMessage,
                       ),
                     ],

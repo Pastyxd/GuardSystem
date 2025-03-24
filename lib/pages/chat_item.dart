@@ -41,7 +41,7 @@ class ChatItem extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: const BoxDecoration(
-                  color: Colors.white,
+                  color: Color(0xFF1565C0),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -54,7 +54,7 @@ class ChatItem extends StatelessWidget {
                 child: Text(
                   unreadMessages > 9 ? "9+" : unreadMessages.toString(),
                   style: const TextStyle(
-                    color: Colors.red,
+                    color: Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),

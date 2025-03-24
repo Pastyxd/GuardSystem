@@ -16,8 +16,12 @@ assert flutterRoot != null, "flutter.sdk not set in local.properties"
 
 android {
     namespace "com.example.lap_diary_new"
-    compileSdkVersion 34
+    compileSdkVersion 35
     ndkVersion flutter.ndkVersion
+
+    buildFeatures {
+        buildConfig true
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -35,7 +39,7 @@ android {
     defaultConfig {
         applicationId "com.example.lap_diary_new"
         minSdkVersion 23
-        targetSdkVersion 34
+        targetSdkVersion 35
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
@@ -56,4 +60,6 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.android.support:multidex:1.0.3'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-} 
+}
+
+apply plugin: 'com.google.gms.google-services' 

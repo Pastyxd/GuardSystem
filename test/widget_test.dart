@@ -31,8 +31,8 @@ void main() {
     expect(find.text('Guard System'), findsOneWidget);
 
     // Ověření, že se zobrazují všechny tlačítka v navigaci
-    expect(find.text('Pauzovacka'), findsOneWidget);
-    expect(find.text('Domov'), findsOneWidget);
-    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('Pauzovačka'), findsOneWidget);
+    expect(find.text('Domů'), findsOneWidget);
+    expect(find.text('Zprávy'), findsOneWidget);
   });
 }
