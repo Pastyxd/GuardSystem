@@ -369,6 +369,7 @@ class _ChatListPageState extends State<ChatListPage> {
   Future<void> _registerUser(
       String name, String email, String phone, String password) async {
     try {
+      // Validace vstupních dat
       if (email.isEmpty || phone.isEmpty || password.isEmpty || name.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Všechna pole musí být vyplněna')),
@@ -376,7 +377,45 @@ class _ChatListPageState extends State<ChatListPage> {
         return;
       }
 
-      final userDocRef = FirebaseFirestore.instance.collection('users').doc();
+      // Validace emailu
+      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Neplatný formát emailu')),
+        );
+        return;
+      }
+
+      // Validace hesla
+      if (password.length < 6) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Heslo musí mít alespoň 6 znaků')),
+        );
+        return;
+      }
+
+      // Validace telefonního čísla
+      if (!RegExp(r'^\+?[0-9]{9,15}$')
+          .hasMatch(phone.replaceAll(RegExp(r'[^0-9+]'), ''))) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Neplatný formát telefonního čísla')),
+        );
+        return;
+      }
+
+      // Nejprve vytvoříme uživatele v Firebase Auth
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      if (userCredential.user == null) {
+        throw Exception('Nepodařilo se vytvořit uživatele');
+      }
+
+      // Poté uložíme data do Firestore
+      final userDocRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid);
 
       final userData = {
         'email': email,
@@ -385,25 +424,11 @@ class _ChatListPageState extends State<ChatListPage> {
         'createdAt': DateTime.now().toIso8601String(),
         'lastActive': DateTime.now().toIso8601String(),
         'profilePic': '',
+        'uid': userCredential.user!.uid,
       };
 
       await userDocRef.set(userData);
       print('✅ Data uložena do Firestore');
-
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      if (userCredential.user == null) {
-        // pokud se nevytvoril v auth, smazou se data z firestore
-        await userDocRef.delete();
-        throw Exception('Nepodařilo se vytvořit uživatele');
-      }
-
-      await userDocRef.update({
-        'uid': userCredential.user!.uid,
-      });
 
       print('✅ Registrace dokončena');
 
