@@ -1,10 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendChatNotification = void 0;
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 admin.initializeApp();
-exports.sendChatNotification = functions.firestore
+exports.sendChatNotification = functions
+    .region('us-central1')
+    .firestore
     .document('chats/{chatId}/messages/{messageId}')
     .onCreate(async (snap, context) => {
     try {
@@ -76,7 +78,9 @@ exports.sendChatNotification = functions.firestore
                     data: {
                         chatId: context.params.chatId,
                         messageId: context.params.messageId,
-                        click_action: 'FLUTTER_NOTIFICATION_CLICK'
+                        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                        senderName: senderName,
+                        senderEmail: messageData.senderEmail || ''
                     }
                 };
                 const response = await admin.messaging().send(message);

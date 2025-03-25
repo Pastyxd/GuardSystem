@@ -82,7 +82,7 @@ class _ChatListPageState extends State<ChatListPage> {
                       setState(() {});
                     }
                   },
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: Colors.red,
                   child: const Icon(Icons.exit_to_app, color: Colors.white),
                 ),
               ],

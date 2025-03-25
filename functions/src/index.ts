@@ -1,11 +1,13 @@
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 admin.initializeApp();
 
-export const sendChatNotification = functions.firestore
+export const sendChatNotification = functions
+  .region('us-central1')
+  .firestore
   .document('chats/{chatId}/messages/{messageId}')
-  .onCreate(async (snap, context) => {
+  .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
     try {
       const messageData = snap.data();
       if (!messageData) {

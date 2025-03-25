@@ -1,0 +1,4 @@
+env_variables:
+  FIREBASE_PROJECT_ID: "lapdiary2"
+  FIREBASE_LOCATION: "europe-west4"
+  GCLOUD_PROJECT: "lapdiary2" 
