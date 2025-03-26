@@ -52,26 +52,19 @@ class Lifeguard {
 
   bool isAvailableAt(DateTime time) {
     final timeOfDay = TimeOfDay(hour: time.hour, minute: time.minute);
+    final currentMinutes = timeOfDay.hour * 60 + timeOfDay.minute;
+    final startMinutes = shiftStart.hour * 60 + shiftStart.minute;
+    final endMinutes = shiftEnd.hour * 60 + shiftEnd.minute;
 
     // ranni smena
     if (shiftType == ShiftType.morning) {
-      // delka smeny
-      return timeOfDay.hour >= 6 && timeOfDay.hour < 13;
+      return currentMinutes >= 6 * 60 && currentMinutes < 13 * 60;
     }
 
     // odpoledni smena
     if (shiftType == ShiftType.afternoon) {
-      // podminka ze pauzy zacinaji od 13:30 a konci do 20:10
-      return timeOfDay.hour >= 13 &&
-          timeOfDay.hour < 20 &&
-          timeOfDay.minute >= 30 &&
-          timeOfDay.minute < 10;
+      return currentMinutes >= 13 * 60 + 15 && currentMinutes < 21 * 60 + 15;
     }
-
-    // kontrola smeny
-    final currentMinutes = timeOfDay.hour * 60 + timeOfDay.minute;
-    final startMinutes = shiftStart.hour * 60 + shiftStart.minute;
-    final endMinutes = shiftEnd.hour * 60 + shiftEnd.minute;
 
     // celodenni smena
     if (shiftType == ShiftType.fullDay) {
@@ -1203,6 +1196,27 @@ class _BreakSchedulerPageState extends State<BreakSchedulerPage>
 
         // generovani normalnich pauz
         while (currentTime.isBefore(shiftEndTime)) {
+          // Kontrola přechodu mezi směnami
+          if (currentTime.hour == 12 && currentTime.minute >= 30) {
+            // Ukončení ranní směny v 12:59
+            currentTime = DateTime(
+              currentTime.year,
+              currentTime.month,
+              currentTime.day,
+              12,
+              59,
+            );
+          } else if (currentTime.hour == 13 && currentTime.minute < 35) {
+            // Přeskočení na začátek odpolední směny v 13:35
+            currentTime = DateTime(
+              currentTime.year,
+              currentTime.month,
+              currentTime.day,
+              13,
+              35,
+            );
+          }
+
           is50mOpen = await PoolSchedules.isPoolOpenAt(
             PoolType.pool50m,
             _selectedDay!,

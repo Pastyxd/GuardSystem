@@ -173,7 +173,7 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  int _selectedIndex = 2; // default index - chatpage
+  int _selectedIndex = 2; // default index pro chatpage
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Stranky aplikace

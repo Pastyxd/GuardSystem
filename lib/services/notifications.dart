@@ -57,7 +57,7 @@ class Notifications {
         await _firestore
             .collection('users')
             .doc(user.uid)
-            .update({'fcmToken': token});
+            .set({'fcmToken': token}, SetOptions(merge: true));
         print('✅ FCM token uložen pro uživatele: ${user.uid}');
       }
     } catch (e) {

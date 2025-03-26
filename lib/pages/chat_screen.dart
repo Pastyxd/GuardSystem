@@ -138,9 +138,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
       DocumentSnapshot userDoc =
           await _firestore.collection("users").doc(currentUser.uid).get();
-      String senderName = userDoc.exists
-          ? userDoc["name"] ?? "Neznámý uživatel"
-          : "Neznámý uživatel";
+      String senderName = "Neznámý uživatel";
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>?;
+        print("\n👤 Data odesílatele:");
+        print("📄 Celá data uživatele: $userData");
+        print("📌 Jméno uživatele: ${userData?["name"]}");
+        senderName = userData?["name"] ?? "Neznámý uživatel";
+        print("✅ Použit senderName: $senderName");
+      } else {
+        print("⚠️ Dokument uživatele neexistuje");
+      }
 
       print("🔄 Odesílání zprávy - Odesílatel: $senderName");
 
@@ -170,6 +178,7 @@ class _ChatScreenState extends State<ChatScreen> {
           "lastMessage": {
             "text": encryptedText,
             "timestamp": FieldValue.serverTimestamp(),
+            "senderName": senderName,
           },
           "unreadMessages.$receiverId": FieldValue.increment(1),
         });
@@ -357,13 +366,41 @@ class _ChatScreenState extends State<ChatScreen> {
                               doc.data() as Map<String, dynamic>;
                           bool isMe = _auth.currentUser?.uid == data["sender"];
 
+                          print("\n🔍 ====== DETAILNÍ LOG ZPRÁVY ======");
+                          print("📄 Celá data zprávy: $data");
+                          print("👤 ID odesílatele: ${data["sender"]}");
+                          print("📌 senderName hodnota: ${data["senderName"]}");
+                          print(
+                              "📌 senderName typ: ${data["senderName"]?.runtimeType}");
+                          print("📌 senderEmail: ${data["senderEmail"]}");
+                          print("📌 timestamp: ${data["timestamp"]}");
+                          print("📌 text: ${data["text"]}");
+
                           String decryptedText = "";
                           try {
                             decryptedText =
                                 EncryptionService.decryptText(data["text"]);
+                            print("🔓 Dešifrovaný text: $decryptedText");
                           } catch (e) {
                             decryptedText = "🔒 Nelze dešifrovat";
+                            print("❌ Chyba při dešifrování: $e");
                           }
+
+                          String senderName = "Neznámý uživatel";
+                          try {
+                            if (data["senderName"] != null) {
+                              senderName = data["senderName"].toString();
+                              print("✅ Použit senderName: $senderName");
+                            } else {
+                              print(
+                                  "⚠️ senderName je null, použit výchozí: $senderName");
+                            }
+                          } catch (e) {
+                            print("❌ Chyba při zpracování senderName: $e");
+                            print("❌ Stack trace: ${StackTrace.current}");
+                          }
+
+                          print("====== KONEC LOGU ZPRÁVY ======\n");
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -435,8 +472,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          data["senderName"] ??
-                                              "Neznámý uživatel",
+                                          senderName,
                                           style: const TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.bold,

@@ -35,11 +35,36 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _showNewPassword = false;
   bool _notificationsEnabled = true;
   File? _imageFile;
+  bool _isOwnProfile = false;
 
   @override
   void initState() {
     super.initState();
+    print("🚀 Inicializace UserProfileScreen");
+    print("📧 Email profilu: ${widget.email}");
+    _checkIfOwnProfile();
     _fetchUserData();
+  }
+
+  /// kontrola, zda je zobrazený profil vlastní
+  void _checkIfOwnProfile() {
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      print("🔍 Kontrola vlastního profilu:");
+      print("📧 Aktuální uživatel: ${currentUser.email}");
+      print("📧 Zobrazený profil: ${widget.email}");
+      print("🔍 Porovnání: ${currentUser.email == widget.email}");
+      print("🔍 Typ aktuálního emailu: ${currentUser.email.runtimeType}");
+      print("🔍 Typ widget.email: ${widget.email.runtimeType}");
+      print("🔍 Délka aktuálního emailu: ${currentUser.email?.length}");
+      print("🔍 Délka widget.email: ${widget.email.length}");
+
+      setState(() {
+        _isOwnProfile = currentUser.email == widget.email;
+      });
+    } else {
+      print("⚠️ Žádný přihlášený uživatel!");
+    }
   }
 
   /// nacteni uzivatelskych dat
@@ -405,30 +430,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _toggleNotifications() async {
+  /// prepinani notifikaci
+  void _toggleNotifications(bool value) async {
     try {
       final userId = _auth.currentUser!.uid;
-      final newState = !_notificationsEnabled;
-
       await FirebaseFirestore.instance.collection("users").doc(userId).update({
-        "notificationsEnabled": newState,
+        "notificationsEnabled": value,
       });
-
-      if (mounted) {
-        setState(() {
-          _notificationsEnabled = newState;
-        });
-      }
-
-      print(
-          "🔔 Notifikace ${newState ? "zapnuty" : "vypnuty"} pro uživatele $userId");
+      setState(() {
+        _notificationsEnabled = value;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value ? "Notifikace zapnuty" : "Notifikace vypnuty"),
+          backgroundColor: value ? Colors.green : Colors.orange,
+        ),
+      );
     } catch (e) {
-      print("❌ Chyba při přepínání notifikací: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Chyba při přepínání notifikací")),
-        );
-      }
+      print("❌ Chyba při změně nastavení notifikací: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Chyba při změně nastavení notifikací"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -436,6 +461,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = bottomPadding > 0;
+
+    print("🏗️ Build UserProfileScreen:");
+    print("🔍 _isOwnProfile: $_isOwnProfile");
+    print("⌨️ isKeyboardOpen: $isKeyboardOpen");
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -476,25 +505,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 child: Column(
                   children: [
                     GestureDetector(
-                      onTap: () async {
-                        print("📸 Uživatel klikl na profilovku");
-                        print("📧 Email profilu: ${widget.email}");
-                        print(
-                            "👤 Aktuální uživatel: ${_auth.currentUser?.email}");
-
-                        final bool isOwnProfile = widget.email.toLowerCase() ==
-                            _auth.currentUser?.email?.toLowerCase();
-                        print("🔍 Porovnání: $isOwnProfile");
-
-                        if (isOwnProfile) {
-                          print(
-                              "✅ Je to vlastní profil, spouštím nahrávání fotky");
-                          await _pickAndUploadImage();
-                        } else {
-                          print(
-                              "❌ Není to vlastní profil, nahrávání fotky zakázáno");
-                        }
-                      },
+                      onTap: _isOwnProfile ? _pickAndUploadImage : null,
                       child: Stack(
                         children: [
                           Container(
@@ -522,8 +533,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                       : null,
                             ),
                           ),
-                          if (widget.email.toLowerCase() ==
-                              _auth.currentUser?.email?.toLowerCase())
+                          if (_isOwnProfile)
                             Positioned(
                               bottom: 0,
                               right: 0,
@@ -612,7 +622,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 thickness: 1,
                 height: 32,
               ),
-              if (!isKeyboardOpen) ...[
+              if (!isKeyboardOpen &&
+                  widget.email.toLowerCase() ==
+                      _auth.currentUser?.email?.toLowerCase()) ...[
                 const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -658,7 +670,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       child: Switch(
                         value: _notificationsEnabled,
                         onChanged: (bool value) {
-                          _toggleNotifications();
+                          _toggleNotifications(value);
                         },
                         activeColor: Colors.blue,
                       ),
@@ -724,47 +736,47 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     },
                   ),
                 ),
-              ],
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: ElevatedButton(
-                  onPressed: () async {
-                    try {
-                      await FirebaseAuth.instance.signOut();
-                      if (mounted) {
-                        Navigator.of(context).pushNamedAndRemoveUntil(
-                          '/',
-                          (route) => false,
-                        );
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await FirebaseAuth.instance.signOut();
+                        if (mounted) {
+                          Navigator.of(context).pushNamedAndRemoveUntil(
+                            '/',
+                            (route) => false,
+                          );
+                        }
+                      } catch (e) {
+                        print("❌ Chyba při odhlašování: $e");
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Chyba při odhlašování"),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
                       }
-                    } catch (e) {
-                      print("❌ Chyba při odhlašování: $e");
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Chyba při odhlašování"),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Odhlásit se',
+                      style: TextStyle(fontSize: 16),
                     ),
                   ),
-                  child: const Text(
-                    'Odhlásit se',
-                    style: TextStyle(fontSize: 16),
-                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
+              ],
             ],
           ),
         ),

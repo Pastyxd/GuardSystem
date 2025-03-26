@@ -278,6 +278,12 @@ class _ChatListPageState extends State<ChatListPage> {
                     String currentUserId =
                         FirebaseAuth.instance.currentUser!.uid;
 
+                    print("\n🔍 ====== DETAILNÍ LOG UŽIVATELE ======");
+                    print("📄 Celá data uživatele: $userData");
+                    print("👤 ID uživatele: $chatPartnerId");
+                    print("📌 Jméno uživatele: ${userData['name']}");
+                    print("📌 Email uživatele: ${userData['email']}");
+
                     // vytvoreni chatId ze 2 uid
                     List<String> ids = [currentUserId, chatPartnerId]..sort();
                     String chatId = ids.join("_");
@@ -288,22 +294,35 @@ class _ChatListPageState extends State<ChatListPage> {
                           .doc(chatId)
                           .snapshots(),
                       builder: (context, chatSnapshot) {
+                        String userName = "Neznámý uživatel";
+                        String userEmail = "Neznámý email";
+                        String profilePic = "";
+
+                        try {
+                          userName = userData['name']?.toString() ??
+                              userData['email']?.toString() ??
+                              "Neznámý uživatel";
+                          userEmail =
+                              userData['email']?.toString() ?? "Neznámý email";
+                          profilePic = userData['profilePic']?.toString() ?? "";
+                        } catch (e) {
+                          print("❌ Chyba při zpracování dat uživatele: $e");
+                        }
+
                         if (!chatSnapshot.hasData ||
                             !chatSnapshot.data!.exists) {
                           return ChatItem(
-                            name: userData['name'] ?? userData['email'],
+                            name: userName,
                             message: "Žádné zprávy",
                             time: "",
                             unreadMessages: 0,
-                            profilePicUrl: userData['profilePic'] ?? "",
+                            profilePicUrl: profilePic,
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ChatScreen(
-                                  chatPartnerName:
-                                      userData['name'] ?? "Neznámý uživatel",
-                                  chatPartnerEmail:
-                                      userData['email'] ?? "Neznámý email",
+                                  chatPartnerName: userName,
+                                  chatPartnerEmail: userEmail,
                                 ),
                               ),
                             ),
@@ -337,19 +356,17 @@ class _ChatListPageState extends State<ChatListPage> {
                             "📬 ChatListPage - unreadMessagesCount: $unreadMessagesCount pro uživatele: ${userData['name']}");
 
                         return ChatItem(
-                          name: userData['name'] ?? userData['email'],
+                          name: userName,
                           message: lastMessageText,
                           time: formattedTime,
                           unreadMessages: unreadMessagesCount,
-                          profilePicUrl: userData['profilePic'] ?? "",
+                          profilePicUrl: profilePic,
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => ChatScreen(
-                                chatPartnerName:
-                                    userData['name'] ?? "Neznámý uživatel",
-                                chatPartnerEmail:
-                                    userData['email'] ?? "Neznámý email",
+                                chatPartnerName: userName,
+                                chatPartnerEmail: userEmail,
                               ),
                             ),
                           ),
@@ -402,7 +419,7 @@ class _ChatListPageState extends State<ChatListPage> {
         return;
       }
 
-      // Nejprve vytvoříme uživatele v Firebase Auth
+      // Vvytvoříme uživatele v Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
