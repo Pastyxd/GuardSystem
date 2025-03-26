@@ -19,6 +19,7 @@ dependencies:
   firebase_app_check: ^0.2.1+8
   firebase_core: ^2.25.4
   firebase_auth: ^4.15.3
+  cloud_functions: ^4.5.8
 
   #  Ostatní knihovny
   shared_preferences: ^2.2.2

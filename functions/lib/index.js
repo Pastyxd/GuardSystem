@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendChatNotification = void 0;
+exports.sendDirectNotification = exports.sendChatNotification = void 0;
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -104,6 +104,53 @@ exports.sendChatNotification = functions
         console.error('Chyba při zpracování notifikace:', error);
         console.error('================================\n');
         return null;
+    }
+});
+// Funkce pro odesílání notifikací přímo z aplikace
+exports.sendDirectNotification = functions
+    .region('us-central1')
+    .https.onCall(async (data, context) => {
+    try {
+        const { senderName, message, fcmToken } = data;
+        if (!fcmToken) {
+            console.log('❌ Chybí FCM token');
+            return null;
+        }
+        console.log('\n📱 ====== PŘÍMÁ NOTIFIKACE ======');
+        console.log(`👤 Odesílatel: ${senderName}`);
+        console.log(`💬 Text zprávy: ${message}`);
+        console.log(`📱 FCM Token: ${fcmToken}`);
+        const notificationMessage = {
+            token: fcmToken,
+            notification: {
+                title: `${senderName} Vám posílá zprávu`,
+                body: message
+            },
+            android: {
+                notification: {
+                    channelId: 'chat_messages',
+                    priority: 'max',
+                    defaultSound: true,
+                    icon: '@drawable/ic_notification'
+                }
+            },
+            data: {
+                senderName: senderName,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            }
+        };
+        const response = await admin.messaging().send(notificationMessage);
+        console.log(`\n✅ Notifikace odeslána:`);
+        console.log(`   Message ID: ${response}`);
+        console.log(`   Status: Úspěšně doručeno na zařízení`);
+        console.log('\n✨ ====== ZPRACOVÁNÍ DOKONČENO ======\n');
+        return { success: true, messageId: response };
+    }
+    catch (error) {
+        console.error('\n❌ ====== KRITICKÁ CHYBA ======');
+        console.error('Chyba při odesílání notifikace:', error);
+        console.error('================================\n');
+        throw new functions.https.HttpsError('internal', 'Chyba při odesílání notifikace');
     }
 });
 //# sourceMappingURL=index.js.map

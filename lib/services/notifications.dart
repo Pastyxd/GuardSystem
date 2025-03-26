@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:guardsys/pages/chat_screen.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 // Globální klíč pro navigaci
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -118,7 +119,17 @@ class Notifications {
 
       if (recipientToken != null) {
         print('📱 Odesílám notifikaci na token: $recipientToken');
-        // logovani platnosti tokenu(pokud je null, tak se neodesila)
+
+        // Odeslání notifikace přes Cloud Functions
+        final functions = FirebaseFunctions.instance;
+        final callable = functions.httpsCallable('sendDirectNotification');
+        await callable.call({
+          'senderName': senderName,
+          'message': message,
+          'fcmToken': recipientToken,
+        });
+
+        print('✅ Notifikace úspěšně odeslána');
       } else {
         print('⚠️ Uživatel nemá nastavený FCM token');
       }

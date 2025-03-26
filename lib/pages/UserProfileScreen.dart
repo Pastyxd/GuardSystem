@@ -53,14 +53,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       print("🔍 Kontrola vlastního profilu:");
       print("📧 Aktuální uživatel: ${currentUser.email}");
       print("📧 Zobrazený profil: ${widget.email}");
-      print("🔍 Porovnání: ${currentUser.email == widget.email}");
-      print("🔍 Typ aktuálního emailu: ${currentUser.email.runtimeType}");
-      print("🔍 Typ widget.email: ${widget.email.runtimeType}");
-      print("🔍 Délka aktuálního emailu: ${currentUser.email?.length}");
-      print("🔍 Délka widget.email: ${widget.email.length}");
+
+      // Porovnání emailů bez ohledu na velikost písmen a mezery
+      final currentEmail = currentUser.email?.toLowerCase().trim() ?? "";
+      final profileEmail = widget.email.toLowerCase().trim();
+
+      print("🔍 Porovnání: $currentEmail == $profileEmail");
 
       setState(() {
-        _isOwnProfile = currentUser.email == widget.email;
+        _isOwnProfile = currentEmail == profileEmail;
       });
     } else {
       print("⚠️ Žádný přihlášený uživatel!");
@@ -106,14 +107,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     setState(() => _isPickingImage = true);
 
     try {
+      print("📸 Spouštím výběr obrázku...");
       final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile =
-          await picker.pickImage(source: ImageSource.gallery);
+
+      // Kontrola oprávnění
+      if (kIsWeb) {
+        print("🌐 Web platforma - přeskočení kontroly oprávnění");
+      } else {
+        print("📱 Mobilní platforma - kontrola oprávnění");
+        final status = await ImagePicker().retrieveLostData();
+        if (status.isEmpty) {
+          print("✅ Oprávnění pro přístup k galerii je v pořádku");
+        }
+      }
+
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
 
       if (pickedFile == null) {
-        print("⚠️ Uživatel nevybral žádný obrázek.");
+        print("⚠️ Uživatel nevybral žádný obrázek nebo zrušil výběr");
         return;
       }
+
+      print("✅ Obrázek vybrán: ${pickedFile.path}");
 
       final userId = _auth.currentUser!.uid;
       final storageRef = FirebaseStorage.instance
@@ -125,12 +145,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       UploadTask uploadTask;
       if (kIsWeb) {
+        print("🌐 Nahrávání na webu");
         Uint8List bytes = await pickedFile.readAsBytes();
         uploadTask = storageRef.putData(
           bytes,
           SettableMetadata(contentType: 'image/jpeg'),
         );
       } else {
+        print("📱 Nahrávání na mobilu");
         File file = File(pickedFile.path);
         uploadTask = storageRef.putFile(
           file,
@@ -138,7 +160,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         );
       }
 
+      print("⏳ Čekám na dokončení nahrávání...");
       TaskSnapshot snapshot = await uploadTask;
+
       if (snapshot.state == TaskState.success) {
         final url = await snapshot.ref.getDownloadURL();
         print("✅ Obrázek úspěšně nahrán. URL: $url");
@@ -159,12 +183,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           setState(() {
             profilePicUrl = urlWithTimestamp;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profilový obrázek byl úspěšně aktualizován'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       } else {
         print("❌ Chyba: Obrázek nebyl úspěšně nahrán!");
+        throw Exception("Nahrávání selhalo");
       }
     } catch (e) {
       print("❌ Chyba při nahrávání obrázku: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chyba při nahrávání obrázku: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isPickingImage = false);
@@ -457,6 +496,40 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
+  Widget _buildProfileImage() {
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 50,
+          backgroundColor: Colors.grey[200],
+          backgroundImage:
+              profilePicUrl.isNotEmpty ? NetworkImage(profilePicUrl) : null,
+          child: profilePicUrl.isEmpty
+              ? const Icon(Icons.person, size: 50, color: Colors.grey)
+              : null,
+        ),
+        if (_isOwnProfile)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Icon(
+                Icons.camera_alt,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
@@ -506,52 +579,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   children: [
                     GestureDetector(
                       onTap: _isOwnProfile ? _pickAndUploadImage : null,
-                      child: Stack(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 2.5,
-                              ),
-                            ),
-                            child: CircleAvatar(
-                              radius: 50,
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.tertiary,
-                              backgroundImage: _imageFile != null
-                                  ? FileImage(_imageFile!)
-                                  : (profilePicUrl.isNotEmpty
-                                      ? NetworkImage(profilePicUrl)
-                                          as ImageProvider
-                                      : null),
-                              child:
-                                  _imageFile == null && (profilePicUrl.isEmpty)
-                                      ? const Icon(Icons.person,
-                                          size: 60, color: Colors.white)
-                                      : null,
-                            ),
-                          ),
-                          if (_isOwnProfile)
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.blue,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.camera_alt,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                      child: _buildProfileImage(),
                     ),
                     const SizedBox(height: 16),
                     Text(
